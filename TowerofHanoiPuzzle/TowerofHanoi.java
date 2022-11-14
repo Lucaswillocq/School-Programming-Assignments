@@ -1,3 +1,5 @@
+
+//class to represent a new game object
 public class TowerOfHanoi
 {
 	private Pole[] poles;
