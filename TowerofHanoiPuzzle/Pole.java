@@ -1,4 +1,5 @@
 
+//Class to represent a Pole object
 public class Pole
 {
 	private Disk[] disks;
