@@ -1,4 +1,6 @@
 
+//Class to represent a Disk object
+
 public class Disk
 {
 	private int diskSize;
