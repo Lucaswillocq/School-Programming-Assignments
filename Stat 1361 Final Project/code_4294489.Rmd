@@ -1,0 +1,298 @@
+---
+title: "code_4294489"
+author: "Lucas Willocq"
+date: "4/14/2022"
+output: pdf_document
+---
+
+Packages needed to work on the project.
+```{r warning = FALSE, message = FALSE}
+library(gbm)
+library(glmnet)
+library(plyr)
+library(lubridate)
+library(leaps)
+```
+
+
+For starters, necessary to load the train file and examine it.
+
+```{r}
+df <- read.csv(file = 'train.csv', header=T, stringsAsFactors = T)
+attach(df)
+summary(df)
+```
+
+Get rid of unnecessary variables "Functioning" and "ID"
+
+```{r}
+df <- subset(df, select = -Functioning)
+df <- subset(df, select = -ID)
+```
+
+Next I converted all dates to numbers of days out of the year.  
+
+```{r}
+df$Date <- yday(as.Date(df$Date, format = "%d/%m/%Y"))
+```
+
+I then broke up the data into a test and training set.
+
+```{r}
+line <- sample(1:nrow(df), nrow(df)*0.8)
+df.train <- df[line, ]
+df.test <- df[-line, ]
+```
+
+
+Just to get a better idea of what variables are important, I ran the full model with all these variables and then got the basic test MSE.
+```{r}
+lm.full <- lm(Count ~., data=df.train)
+summary(lm.full)
+
+predict.lm.full <- predict.lm(lm.full, data = df.test)
+full.MSE <- mean((df.test$Count-predict.lm.full)^2)
+full.MSE
+
+plot(df.train$Date,df.train$Count)
+```
+
+From examining this distribution of bike rentals per day of the year, it follows a rather normal pattern.  It is also apparent that the full linear model is not going to be a good fit, with a high test MSE.  The majority of bike rentals happen in the middle of the year (warm months), with less on the ends when it is cold.
+
+I examined some of the individual predictors to see if their frequencies lined up with Count, to compare if models are logical.
+
+```{r}
+par(mfrow = c(2,4)) 
+hist(df.train$Count)
+hist(df.train$Temperature)
+hist(df.train$Humidity)
+hist(df.train$Solar)
+hist(df.train$Rainfall)
+hist(df.train$Snowfall)
+hist(df.train$Dew)
+hist(df.train$Visibility)
+```
+
+I then decided to go through each individual predictor and examine which ones produced the lowest test MSE on their own.
+```{r, warning = FALSE, message = FALSE}
+num_predictors <- ncol(df.train)-1
+
+individual.MSEs <- rep()
+names <- colnames(df.train[-1])
+
+for(i in names){
+  model <- lm(Count~df.train[[i]], data = df.train)
+  predict.lm <- predict.lm(model, data = df.test)
+  individual.MSEs[i]<- mean((df.test$Count-predict.lm)^2)
+}
+individual.MSEs
+which.min(individual.MSEs) - 433744
+```
+When testing individual predictors, it appears that the model with only Holiday produces the lowest MSE.  
+
+With these individual predictor models also not being a great fit, I decided to run some model selection criterias and examine graphs of the RSS, Adjusted R-squared, BIC and Cp levels for different model sizes.
+
+```{r}
+bestsubset <- regsubsets(Count~., df.train, nvmax = 12)
+bestsubset.summary <- summary(bestsubset)
+
+par(mfrow = c(2,2))
+plot(bestsubset.summary$rss, xlab = "Number of variables", ylab= "RSS", type = "l")
+points(which.min(bestsubset.summary$rss), bestsubset.summary$rss[which.min(bestsubset.summary$rss)], col = "red", cex = 2, pch = 20)
+
+
+plot(bestsubset.summary$adjr2, xlab = "Number of variables", ylab= "Adjusted Rsq", type = "l")
+points(which.max(bestsubset.summary$adjr2), bestsubset.summary$adjr2[which.max(bestsubset.summary$adjr2)], col = "red", cex = 2, pch = 20)
+
+plot(bestsubset.summary$bic, xlab = "Number of variables", ylab= "BIC", type = "l")
+points(which.min(bestsubset.summary$bic), bestsubset.summary$bic[which.min(bestsubset.summary$bic)], col = "red", cex = 2, pch = 20)
+
+plot(bestsubset.summary$cp, xlab = "Number of variables", ylab= "Mallows Cp", type = "l")
+points(which.min(bestsubset.summary$cp), bestsubset.summary$cp[which.min(bestsubset.summary$cp)], col = "red", cex = 2, pch = 20)
+```
+
+As expected, the RSS is smallest with the most amount of predictors in the model.  This will probably not be our ideal model however, as it will prove to be overly complicated.  The BIC is lowest at 7 variables, while both the Cp and Adjusted Rsq are smallest at a 10 variable model.  I then decided to look even further into these models.
+
+```{r, warning = FALSE, message = FALSE}
+coef(bestsubset, 7)
+coef(bestsubset, 10)
+
+seven_var_fit <- lm(Count ~ Hour + Temperature + Humidity + Solar + Rainfall + Seasons + Holiday, data = df.train)
+seven_var.lm <- predict.lm(seven_var_fit, data = df.test)
+seven_var.MSE<- mean((df.test$Count-seven_var.lm)^2)
+seven_var.MSE
+
+ten_var_fit <- lm(Count ~ Date+Hour+Temperature+Humidity+Wind+Solar+Rainfall+Snowfall+Seasons+Holiday, data = df.train)
+ten_var.lm <- predict.lm(ten_var_fit, data = df.test)
+ten_var.MSE<- mean((df.test$Count-ten_var.lm)^2)
+ten_var.MSE
+
+```
+Surprisingly, these do not have very low MSEs, actually higher than previous models. I decided to then do a step-wise model selection to see if these results changed. I did a forward and backward selection and calculated the same stats from the different model sizes.
+
+```{r}
+fit.forward <- regsubsets(Count ~., data = df.train, nvmax = 12, method = "forward")
+par(mfrow = c(2,2))
+
+forward.summary <- summary(fit.forward)
+
+plot(forward.summary$rss, xlab = "Number of variables", ylab= "RSS", type = "l")
+points(which.min(forward.summary$rss), forward.summary$rss[which.min(forward.summary$rss)], col = "red", cex = 2, pch = 20)
+
+
+plot(forward.summary$adjr2, xlab = "Number of variables", ylab= "Rsq", type = "l")
+points(which.min(forward.summary$adjr2), forward.summary$adjr2[which.max(forward.summary$adjr2)], col = "red", cex = 2, pch = 20)
+
+plot(forward.summary$bic, xlab = "Number of variables", ylab= "bic", type = "l")
+points(which.min(forward.summary$bic), forward.summary$bic[which.min(forward.summary$bic)], col = "red", cex = 2, pch = 20)
+
+plot(forward.summary$cp, xlab = "Number of variables", ylab= "cp", type = "l")
+points(which.min(forward.summary$cp), forward.summary$cp[which.min(forward.summary$cp)], col = "red", cex = 2, pch = 20)
+
+
+fit.backward <- regsubsets(Count ~., data = df.train, nvmax = 12, method = "backward")
+
+backward.summary <- summary(fit.backward)
+
+plot(backward.summary$rss, xlab = "Number of variables", ylab= "RSS", type = "l")
+points(which.min(backward.summary$rss), backward.summary$rss[which.min(backward.summary$rss)], col = "red", cex = 2, pch = 20)
+
+
+plot(backward.summary$adjr2, xlab = "Number of variables", ylab= "Rsq", type = "l")
+points(which.min(backward.summary$adjr2), backward.summary$adjr2[which.max(backward.summary$adjr2)], col = "red", cex = 2, pch = 20)
+
+plot(backward.summary$bic, xlab = "Number of variables", ylab= "bic", type = "l")
+points(which.min(backward.summary$bic), backward.summary$bic[which.min(backward.summary$bic)], col = "red", cex = 2, pch = 20)
+
+plot(backward.summary$cp, xlab = "Number of variables", ylab= "cp", type = "l")
+points(which.min(backward.summary$cp), backward.summary$cp[which.min(backward.summary$cp)], col = "red", cex = 2, pch = 20)
+
+
+forward.summary
+backward.summary
+
+```
+Backward and forward selection produced the same models as the Subset selection, so I decided to look at the models they all produced and examine their MSEs individually to see which model had the lowest test error.
+
+```{r, warning = FALSE, message = FALSE}
+
+Mses <- rep()
+
+
+one_var_model <- lm(Count ~ Temperature, data = df.train)
+
+one_var.lm <- predict.lm(one_var_model, data = df.test)
+Mses[1]<- mean((df.test$Count-one_var.lm)^2)
+
+two_var_model <- lm(Count ~ Temperature + Hour, data = df.train)
+two_var.lm <- predict.lm(two_var_model, data = df.test)
+Mses[2]<- mean((df.test$Count-two_var.lm)^2)
+
+three_var_model <- lm(Count ~ Temperature + Hour + Humidity, data = df.train)
+
+three_var.lm <- predict.lm(three_var_model, data = df.test)
+Mses[3]<- mean((df.test$Count-three_var.lm)^2)
+
+four_var_model <- lm(Count ~ Temperature + Hour + Humidity + Seasons, data = df.train)
+
+four_var.lm <- predict.lm(four_var_model, data = df.test)
+Mses[4]<- mean((df.test$Count-four_var.lm)^2)
+
+five_var_model <- lm(Count ~ Temperature + Hour + Humidity + Seasons + Rainfall, data = df.train)
+
+five_var.lm <- predict.lm(five_var_model, data = df.test)
+Mses[5]<- mean((df.test$Count-five_var.lm)^2)
+
+six_var_model <- lm(Count ~ Temperature + Hour + Humidity + Seasons + Rainfall + Solar, data = df.train)
+
+six_var.lm <- predict.lm(six_var_model, data = df.test)
+Mses[6]<- mean((df.test$Count-six_var.lm)^2)
+
+seven_var_model <- lm(Count ~ Temperature + Hour + Humidity + Seasons + Rainfall + Solar + Holiday, data = df.train)
+
+seven_var.lm <- predict.lm(seven_var_model, data = df.test)
+Mses[7]<- mean((df.test$Count-seven_var.lm)^2)
+
+eight_var_model <- lm(Count ~ Temperature + Hour + Humidity + Seasons + Rainfall + Solar + Holiday + Snowfall, data = df.train)
+
+eight_var.lm <- predict.lm(eight_var_model, data = df.test)
+Mses[8]<- mean((df.test$Count-eight_var.lm)^2)
+
+nine_var_model <- lm(Count ~ Temperature + Hour + Humidity + Seasons + Rainfall + Solar + Holiday + Snowfall + Wind, data = df.train)
+
+nine_var.lm <- predict.lm(nine_var_model, data = df.test)
+Mses[9]<- mean((df.test$Count-nine_var.lm)^2)
+
+Mses
+which.min(Mses)
+```
+The individual predictor (Temperature) produced the lowest test MSE, although it wasn't too far off from the rest of the models.  It would probably make more sense to include more predictors.  I decided to go a new route after these investigations and look into lasso and ridge regression on the entire data set.  
+
+```{r}
+
+set.seed(1)
+
+train.matrix <- model.matrix(Count~., data = df.train)
+test.matrix <- model.matrix(Count~., data = df.test)
+grid <- 10^seq(10,-2,length = 100)
+
+lasso<-glmnet(train.matrix,df.train$Count,alpha=1,lambda=grid)
+cv.lasso<-cv.glmnet(train.matrix,df.train$Count,alpha=1,lambda=grid)
+bestlam.lasso <- cv.lasso$lambda.min
+pred.lasso<-predict(lasso,s=bestlam.lasso,newx = test.matrix)
+error_lasso <- mean((df.test$Count-pred.lasso)^2)
+error_lasso
+
+lasso.coef <- predict(lasso, type = "coefficients", s= bestlam.lasso)
+lasso.coef
+
+ridge<-glmnet(train.matrix,df.train$Count,alpha=0,lambda=grid)
+cv.ridge<-cv.glmnet(train.matrix,df.train$Count,alpha=0,lambda=grid)
+bestlam.ridge <- cv.ridge$lambda.min
+pred.ridge<-predict(ridge,s=bestlam.ridge,newx = test.matrix)
+error_ridge <- mean((df.test$Count-pred.ridge)^2)
+error_ridge
+
+ridge.coef <- predict(ridge, type = "coefficients", s= bestlam.ridge)
+ridge.coef
+```
+The ridge and lasso methods produced significantly less test MSE than previous methods, with regression having slightly less.  Lasso managed to shrink every variable by a ton, while ridge kept it more interpretable.  While these models were probably overly complicated, I decided to try out the 7 variable model that the model selection had delegated to me with ridge regression.  
+
+```{r}
+train.matrix <- model.matrix(Count ~ Hour + Temperature + Humidity + Solar + Rainfall + Seasons + Holiday, data = df.train)
+test.matrix <- model.matrix(Count ~ Hour + Temperature + Humidity + Solar + Rainfall + Seasons + Holiday, data = df.test)
+grid <- 10^seq(10,-2,length = 100)
+
+ridge<-glmnet(train.matrix,df.train$Count,alpha=0,lambda=grid)
+cv.ridge<-cv.glmnet(train.matrix,df.train$Count,alpha=0,lambda=grid)
+bestlam.ridge <- cv.ridge$lambda.min
+pred.ridge<-predict(ridge,s=bestlam.ridge,newx = test.matrix)
+error_ridge <- mean((df.test$Count-pred.ridge)^2)
+error_ridge
+
+ridge.coef <- predict(ridge, type = "coefficients", s= bestlam.ridge)
+ridge.coef
+```
+This model seems to be the best fit, as well as the easiest to understand with it's coefficients and predictors.
+
+I went ahead and matched it up to the final datafile, and made sure to change some of the negative values to 0, and any decimals points rounded.
+```{r}
+final.df <- read.csv(file = 'test.csv', header=T, stringsAsFactors = T)
+final.df$Date <- yday(as.Date(final.df$Date, format = "%d/%m/%Y"))
+final.df['Count']=rep(0)
+test.matrix <- model.matrix(Count ~ Hour + Temperature + Humidity + Solar + Rainfall + Seasons + Holiday, data = final.df)
+
+pred.ridge<-predict(ridge,s=bestlam.ridge,newx = test.matrix)
+final.df$Count=pred.ridge
+final.df <- subset(final.df, select = c(ID,Count))
+final.df['Student Id'] = 4294489
+
+n <- nrow(final.df)
+for(i in 1:n){
+  if(final.df$Count[i]<0){
+    final.df$Count[i]=0}
+}
+final.df <- round(final.df,digits = 0)
+
+write.csv(final.df,"testing_prediction_4294489.csv")
+```
