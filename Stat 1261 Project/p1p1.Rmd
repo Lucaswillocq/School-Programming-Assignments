@@ -1,0 +1,54 @@
+---
+title: "Project1 Part 1"
+author: "Lucas Willocq"
+date: "10/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library(fivethirtyeight)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(mdsr)
+library(Hmisc)
+
+
+use <- drug_use %>% select(age,n,ends_with("_use")) %>% pivot_longer(-c(age,n), names_to = "drug", values_to = "use") %>% mutate(drug = str_sub(drug,start=1,end=-5))
+
+freq <- drug_use %>% select(age,n,ends_with("_freq")) %>% pivot_longer(-c(age,n), names_to = "drug", values_to = "freq") %>% mutate(drug = str_sub(drug,start=1, end = -6))
+
+drug_use_tidy <- left_join(x=use, y=freq, by = c("age","n","drug"))%>% arrange(age)
+
+boomer_drugs <- drug_use_tidy %>% filter(age=="50-64") %>% select(drug,use)
+
+boomer_drugs<-boomer_drugs[-c(1),]
+
+boomer_drugs<- boomer_drugs %>% arrange(desc(use))
+
+str_sub(boomer_drugs$drug,1,1) <- str_sub(boomer_drugs$drug,1,1)%>%str_to_upper()
+
+boomer_drugs <- boomer_drugs%>%mutate(drug = replace(drug,drug=="Pain_releiver","Pain Reliever"))
+
+drugplot <- ggplot(data = boomer_drugs,aes(x=reorder(drug,use),y=use))+xlab(NULL)+ylab(NULL)+ggtitle("Percentage of Americans aged 50-64 who said in a 2012 survey \n that they had used the following drugs in the past year")+geom_col(fill="red")+coord_flip()+theme(plot.title = element_text(face="bold",hjust=0),panel.grid.major = element_blank(),panel.grid.minor=element_blank(),panel.background=element_blank(),axis.ticks.x=element_blank(),axis.ticks.y=element_blank(),axis.text.x=element_blank())+geom_text(aes(label=use),hjust=-0.3)
+
+drugplot
+```
+
+Original Article: How Baby Boomer Get High
+https://fivethirtyeight.com/features/how-baby-boomers-get-high/
+
+The above graphic details the different ways in which "Baby Boomers", or individuals aged 50-64 in 2012, use drugs.  Around the time this article was produced, reports were flying out claiming that baby boomers had been using drugs and overdosing in their later years unlike any other generation.  While media was quick to connect this trend to this group's youthful drug habits (aka Woodstock), there may be other factors involved such as dealing with chronic pain and loss of brain function as a result of old age.  Unsurprisingly, boomers use drugs a lot less often than younger age groups, but the percent of parents and grandparents who use drugs may still be eye opening.  By breaking down the different ways that boomers get high, we can dig deep into their motivations behind their uses and find out if it's due to old age, or related to their drug-filled pasts.
+
+Wrangling the data for this graphic was quite the extensive project.  I started out by installing the neccessary packages from 538, as well as loading the required libraries.  The data presented an intial challenge, as the data was sorted by age values and contained variables describing the different drug habits of each age group (for example, marijuana use, crack use, cocaine use...).  Thankfully, there was a built in tidy helper within the drug_use help section.  This tidy dataframe creates two similar dataframes, selecting only the age, number, and variables about the use or frequency of a certain drug.  Both these data frames are then pivoted, resulting in a tibble with rows corresponding to age and numbers (which are combined together), and has variables of drug type, usage percent, and frequency.  The tidy dataframe is finished by left_joining the two by age, n, and drug, and then arranging by age.  Now here is where I came in.
+
+I first filtered the data for only the boomer age (50-64), and selected the only two variables that appeared in the graphic: type of drug, and percent use.  I then omitted alcohol (the first row), as it was not in the final graphic - the article writers saw that it was so overwhelmingly popular it made the other drugs look like nothing.  I then arranged the data by descending percent of use, and did some string manipulation to change the lowercase drug names to proper names.  Lastly, I specifically modifed the pain reliever variable as it still had an underscore in it's name.  
+
+For plotting the data, I first reordered the drug types by their usages and put it along the x axis.  I put usage on the y axis, and took out the labels for both.  I then added a title, which I noticed didn't fit in the graphic so I split it to two lines.  I then added a geom_col of red color, and flipped the coordinates to get the sideways bar graph.  Now for the fine editing, I madef the title bold, moved it to the left, got rid of the grid and background, erased the axis ticks and markers, and finally added a label to the end of each bar that displayed the usage associated with that drug.  
+
+

@@ -1,0 +1,235 @@
+---
+title: "STAT 1261 Final Project: The S&P 500 and Big Tech"
+author: "Natalia Lialine and Lucas Willocq"
+date: "12/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Proposed Analysis Goals
+1. Visualize the stock prices for Big Tech and the S&P 500 over time.\
+2. Examine the trends of both the S&P and FAANG over the last 30 years, particularly examining key points where big tech really took off and what other sectors may have decreased as a result.\
+3. Find the association and/or correlation of the stock prices between the different corporations in Big Tech.\
+4. Estimate the correlation and/or regression between the index and Big Tech, and attempt to predict future trends.\
+
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidyquant)
+```
+
+# Part 1: Visualization of FANG and S&P 500
+
+In order to have a better understanding of the performance of Big Tech companies in parallel with major stock indices such as the S&P 500, I created a visual to help identify the connection between these two.  
+
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+```
+
+I began my plot by using 'tq_get()' in order to pull the stock data for the FANG companies, as well as for Microsoft and Apple.
+
+```{r, message=FALSE, warning=FALSE}
+facebook_prices <- tq_get("FB", get = "stock.prices", from = "1990-01-01")
+
+amazon_prices <- tq_get("AMZN", get = "stock.prices", from = "1990-01-01")
+
+google_prices <- tq_get("GOOG", get = "stock.prices", from = "1990-01-01")
+
+netflix_prices <- tq_get("NFLX", get = "stock.prices", from = "1990-01-01")
+
+apple_prices <- tq_get("AAPL", get = "stock.prices", from = "1990-01-01")
+
+microsoft_prices <- tq_get("MSFT", get = "stock.prices", from = "1990-01-01")
+
+```
+
+I then pulled the data for the S&P into a data frame labeled 'Stocks', which I would ultimately use for the final plot.  I chose to only get data from 1990 onward, as that is the earliest inclusion of these tech stocks.  
+
+```{r, message=FALSE, warning=FALSE}
+ from = today() - years(30)
+ 
+Stocks <- tq_get("^GSPC", get = "stock.prices", from = from)
+
+```
+
+The next step here is to combine all these data frames into one, using full join.
+
+```{r, message=FALSE, warning=FALSE}
+Stocks <- Stocks %>% full_join(amazon_prices) %>% full_join(facebook_prices) %>% full_join(google_prices) %>% full_join(netflix_prices)%>% full_join(microsoft_prices) %>% full_join(apple_prices)
+```
+
+Last step is to graph the dataframe with ggplot, using date as the x axis and the closing price on the y.
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(Stocks,mapping=aes(x=date,y=close,color=symbol)) + geom_line() + xlab("Date") + ylab("Price at Close") + ggtitle("S&P500 vs FANG Stocks")
+```
+
+## Interpretation
+
+The plot helps us identify several key trends and relationships between Big Tech companies and the S&P.  We can first see that many of these companies had little to no value in the stock market until fairly recently.  It seems around the early 2010's that they first started to take off, with Amazon leading the way.  This trend continued onward into the present, as Amazon is currently worth the most out of all these companies.  It is also interesting to note that Amazon even overtook the S&P 500 at one point in 2020, during a time where nearly all the FANG stocks enjoyed a significant increase in price.  With Amazon and Google accounting for the majority of the value in these companies, Netflix seems to be the leader of the smaller stocks.  These are just a few brief observations that I noticed looking at the graph at a glance, and while noting the increase in price during the 2010's, I began to transition into the second part of my research, which was identifying the key exact dates in which FANG stocks soared.
+
+# Part 2: Examining Key Points in FANG companies
+
+In order to capture key dates where Big Tech companies price went up in value, I constructed a data frame that included the quarterly returns for these companies from the past 10 years.
+
+```{r, message=FALSE, warning=FALSE}
+
+from = today() - years(10)
+
+returns <- tq_get(c("FB","AAPL","AMZN","GOOG","NFLX","MSFT"), get = "stock.prices", from=from) %>% group_by(symbol)
+
+returns_quarterly <-  returns %>% tq_transmute(adjusted,periodReturn,period="quarterly") %>% filter(quarterly.returns>0.25)
+
+```
+
+I only wanted to examine periods where returns made significant increases, and with 10% being a typical rule of thumb used in the stock market for a successful investment, I decided to examine 25% or greater.  This resulted in the following data frame.
+
+```{r}
+returns_quarterly 
+```
+
+
+## Interpretation
+From examining this data frame, it appears that nearly all the companies outside of Google have had great quarterly success in the early 2010's, which is consistent from what we examined from the graph.  It seems the 2012-2013 period was the most overall fruitful for FANG stocks.  
+
+While I intended to examine other sectors in which their stocks decreased at this time, I was unable to load information from past years of Stock Exchanges into RStudio, as the process of getting data was extremely lengthy and long.  After doing some research online detailing big winners and losers from these years however, I was able to identify a few sectors that took a big hit.  Raw materials, such as gold, were one of a few areas that did not have a successful year.  2012-13 was a rather good year for the market in general, so the few anomalies that did not may not be as a result from Big Tech taking off, but rather an unknown outside reason.  
+
+
+# Part 3: Relationship between Big Tech Corporations
+
+When discussing Big Tech, many people refer to FANG: Facebook, Amazon, Netflix, and Google. I chose to focus on these companies, which are all included in the S&P 500.
+
+Firstly, I used `tq_get` to get the stock data each of the 6 companies. I used `tq_transmute()` to transform the daily stock data into monthly values, so we can look at more longer term trends. Additionally, I selected to only look at the closing prices (`close`) for each stock.
+```{r, warning=FALSE}
+AMZN <- tq_get("AMZN", get="stock.prices") %>%
+  group_by(symbol) %>%
+  tq_transmute(select=close, mutate_fun=to.monthly, indexAt="lastof")
+
+FB <- tq_get("FB", get="stock.prices") %>%
+  group_by(symbol) %>%
+  tq_transmute(select=close, mutate_fun=to.monthly, indexAt="lastof")
+
+GOOG <- tq_get("GOOG", get="stock.prices") %>%
+  group_by(symbol) %>%
+  tq_transmute(select=close, mutate_fun=to.monthly, indexAt="lastof")
+
+NFLX <- tq_get("NFLX", get="stock.prices") %>%
+  group_by(symbol) %>%
+  tq_transmute(select=close, mutate_fun=to.monthly, indexAt="lastof")
+```
+
+```{r}
+head(AMZN)
+```
+
+Then, I combined the data into `BigTech_data`. For the analysis later, I spread the data frame such that each stock ticker has a different column.
+```{r}
+BigTech_data <- rbind(AMZN, FB, GOOG, NFLX) %>%
+  spread(symbol, close) %>%
+  na.omit()
+head(BigTech_data)
+```
+
+I used the `cor()` function to calculate the correlations between each of the companies included in `BigTech_data`.
+```{r}
+cor(select(BigTech_data, -date))
+```
+
+## Interpretation
+Looking at the correlation matrix, we can determine which companies are most correlated with each other:\
+- Amazon is most correlated with Netflix\
+- Facebook is most correlated with Amazon\
+- Google is most correlated with Facebook\
+- Netflix is most correlated with Amazon\
+
+I used `tq_index()` to get information about the weights and sectors for each of the companies in an attempt to identify what factors increase correlation.
+
+```{r, message=FALSE}
+tq_index("SP_500") %>%
+  select(symbol, weight, sector) %>%
+  filter(symbol %in% c("AMZN", "GOOG", "FB", "NFLX"))
+```
+
+Unfortunately, these factors only help explain how Google is most correlated with Facebook. They are both weighted similarly (0.0211 vs 0.0198) and are both classified as "Communication Services." Thus, it may be easy to expect that investors value those companies similarly, i.e. that their stock prices are highly correlated.
+
+By contrast, Facebook and Netflix, both classified as "Communication Services", are each most correlated with Amazon, which is classified as "Consumer Discretionary". Amazon, similarly, is most correlated with Netflix. The best attempt I can make at explaining this relatively high correlation is that these companies are most commonly known for a single product, whereas the average consumer (and investor) likely knows Google for a variety of products.
+
+Facebook is best known for its social media service, Amazon for its online shopping service, and Netflix for its online streaming service. Google, however, is commonly known for its online search tool, its video website (YouTube), its map service (Maps), among many other products. Since Google is seen as so wide-ranging in the eyes of many investors, it makes sense why the other three companies in FANG are not highly correlated with Google (in terms of their stock values). Thus, it makes sense that those three are relatively highly correlated with each other.
+
+Overall, all four of the companies in FANG are very highly correlated with each other, with all of their correlations being above 0.90. This is understandable as they are all very large, well-known companies, in the same major industry: Technology. Investors and/or portfolios who invest in tech companies likely buy/sell AMZN, FB, GOOG, NFLX in similar patterns, and thus we can expect those closing values to follow similar trends in the short and long term.
+
+
+# Part 4: Big Tech, the S&P 500, and Future Trends
+
+## Relationship Between the S&P 500 and Big Tech
+
+```{r, message=FALSE}
+SP500_info <- tq_index("SP500")
+head(SP500_info, 10)
+```
+
+First, I created the `SP500` dataset based on the ^GSPC index ticker, which gives us the price index for the S&P 500. Similar to what I did above for the individual stocks, I used `tq_transmute()` to change the daily values into monthly ones, and selected only the `close` column.
+```{r, warning=FALSE}
+SP500 <- tq_get("^GSPC", get="stock.prices") %>%
+  tq_transmute(select=close, mutate_fun=to.monthly, indexAt="lastof") %>%
+  drop_na() %>%
+  rename("SP500"=close)
+head(SP500)
+```
+
+I used `inner_join()` to combine `BigTech_data` and `SP500` to do the regression in the next step.
+```{r, message=FALSE}
+SP500_BigTech <- SP500 %>% inner_join(BigTech_data)
+head(SP500_BigTech)
+```
+
+I then used `stepAIC()` to find the optimal model representing the relationship between the S&P 500 and the individual stocks for each of the four Big Tech companies in FANG. I chose to use `log(SP500)` so that we could look at the percent change in the S&P 500 rather than the real change, since the S&P 500 grows at a more exponential than linear rate.
+```{r}
+full_mod <- lm(log(SP500)~AMZN+FB+GOOG+NFLX, SP500_BigTech)
+summary(full_mod)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(MASS)
+```
+
+```{r}
+final <- stepAIC(full_mod, trace=0)
+summary(final)
+```
+
+## Interpretation
+Using the AIC method, R has determined that the optimal model is `log(SP500)~FB+GOOG+NFLX`.
+
+Firstly, it is important to note that all four of the companies (Amazon, Facebook, Google, Netflix) are included in the calculation of the S&P 500; thus we could have reasonably hypothesized that they would all be statistically significant. Therefore, it is surprising that Amazon is not included in the optimal model. It is also surprising given that in the most recent quarter, AMZN has the highest weight in the S&P 500 of the four companies we analyzed:
+```{r, message=FALSE}
+df <- tq_index("SP_500") %>%
+  filter(symbol %in% c("AMZN", "FB", "GOOG", "NFLX"))
+df[c("symbol", "weight")]
+```
+
+To predict future trends, it will be helpful to look at the coefficients for each of the variables in the final, optimal model.
+```{r}
+summary(final)$coefficients[,1]
+```
+Since the coefficient on `FB` is 0.00125, we can predict that if there is a $100 increase in the price of an individual Facebook stock in a particular month, then there will be a 0.125% increase in the value of the S&P 500. Similarly, a \$100 increase in the price of `GOOG` and `NFLX` will lead to a 0.00948% and 0.054% increase in the S&P 500 index value, respectively.
+
+Additionally, since the intercept is 7.4145, this tells us that if the value of FB, GOOG, and NFLX were all 0, then the S&P 500 is expected to have a 7.41% growth rate. Without these three major companies, the rest of the S&P 500 companies have an estimated weighted average growth of 7.41% for each $1 increase in the sum value of those stocks.
+
+Given the historical, exponential growth of the value of the companies in FANG (which we can see in the visualizations of their stock prices), we can assume that they will only continue to grow at a similarly accelerating rate for many years into the future. Since FB, GOOG, and NFLX all have a statistically significant effect on the S&P 500, we can predict that there will be a resulting growth in the value of the index as well.
+
+Overall, I predict that the S&P 500 will have exponential growth in the future, as it is largely influenced by three major Big Tech corporations--Facebook, Google, and Netflix--which all have experienced exponential growth (at least since 2014). This exponential growth is expected to be at minimum 7.41% for each $1 increase in the value of any one stock included in the index. In the long term, we can expect growth for the S&P 500, even through drastic economic circumstances (e.g. the COVID-19 pandemic).
+
+# Appendix
+
+## Division of Work:
+Lucas - Goals 1 and 2\
+Natalia - Goals 3 and 4
+
+## Final Project Part 1 Article
+Lucas - How Baby Boomers Get High\
+Natalia - Do Pulitzers Help Newspapers Keep Readers?
